@@ -1,5 +1,3 @@
-//TODO
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -2437,7 +2435,7 @@ ccafdsse001-dwesanctuary.esm";
         {
             string IniFilePath = Path.Combine(IniDir, "ModOrganizer.ini");     
 
-            string WineBinary = ModOrganizer.ToWineIniPath(Binary);    
+            string WineBinary = ModOrganizer.ToWineIniPath(Binary).Replace(@"\\", @"/"); //Fix for binary X:\\ -> X:/
             string WineWorkingDir = ModOrganizer.ToWineIniPath(WorkingDirectory);
 
             var SizeData = ServiceSingleton.Settings.GetIniValue(Path.Combine(IniDir, "ModOrganizer.ini"), "customExecutables", "size");
@@ -2461,7 +2459,7 @@ ccafdsse001-dwesanctuary.esm";
             AppendToIni(IniDir, "customExecutables", Size + "\\title", Title);
             AppendToIni(IniDir, "customExecutables", Size + "\\toolbar", Toolbar.ToString().ToLower());
             AppendToIni(IniDir, "customExecutables", Size + "\\workingDirectory", WineWorkingDir);
-        }              
+        }
 
         private void CreateBaseDirectories()
         {
@@ -2505,7 +2503,7 @@ ccafdsse001-dwesanctuary.esm";
             NormalizeLineEndings(Path.Combine(ProfileFolder, "skyrimcustom.ini"), string.Empty);
             NormalizeLineEndings(Path.Combine(MO2Folder, "nxmhandler.ini"), nxmhandler);
 
-            CreateModOrganizerIni(MO2Folder, Instance.Name, Instance.StockGame, (Instance.InstallDir + "\\MODS").Replace("\\", "/"));
+            CreateModOrganizerIni(MO2Folder, Instance.Name, Instance.StockGame, Path.Combine(Instance.InstallDir, "MODS"));
         }
 
         private void CreateLauncher()
@@ -2547,9 +2545,17 @@ ccafdsse001-dwesanctuary.esm";
                 false, true, "Nemesis Unlimited Behavior Engine", true,
                 Path.Combine(Instance.InstallDir, "MODS", "mods",
                             "Nemesis Unlimited Behavior Engine", "Nemesis_Engine").Replace(@"\", @"/"));
+            
+            // Nemesis Symlink
+            string linkName = Path.Combine(Instance.InstallDir, "STOCK GAME", "Data", "Nemesis_Engine");
+            string linkLoc = Path.Combine(Instance.InstallDir, "MODS", "mods", "Nemesis Unlimited Behavior Engine", "Nemesis_Engine");
+            File.CreateSymbolicLink(linkName, linkLoc);
 
-            // xEdit (temporary: no arguments)
-            string Args = string.Empty;
+            // xEdit
+            string dataPath = "-D:" + "\"" + ToWinePath(Path.Combine(Instance.InstallDir, "STOCK GAME", "Data") + "\\\"");
+            string iniPath = "-I:" + "\"" + ToWinePath(Path.Combine(Instance.InstallDir, "MODS", "profiles", Instance.Name, "Skyrim.ini")) + "\\\"";
+            string pluginPath = "-P:" + "\"" + ToWinePath(Path.Combine(Instance.InstallDir, "MODS", "profiles", Instance.Name, "plugins.txt") + "\\\"");
+            string Args = TrimTrailingBackslash(dataPath) + " " + TrimTrailingBackslash(iniPath) + " " + TrimTrailingBackslash(pluginPath);
             AddExecutable(Path.Combine(Instance.InstallDir, "MO2"), Args,
                 Path.Combine(Instance.InstallDir, "TOOLS", "SSE Edit", "SSEEdit.exe").Replace(@"\", @"/"),
                 false, true, "xEdit", true,
@@ -2739,18 +2745,22 @@ ccafdsse001-dwesanctuary.esm";
 
             path = path.Replace("\\", "/").Trim();
 
+            while (path.Contains("//", StringComparison.Ordinal))
+                path = path.Replace("//", "/", StringComparison.Ordinal);
+
+            path = path.TrimEnd('/');
+
             int idx = path.IndexOf("/Instances", StringComparison.OrdinalIgnoreCase);
             if (idx == -1)
             {
-                if (path.StartsWith("/"))
+                if (path.StartsWith("/", StringComparison.Ordinal))
                     return "X:" + path.Replace("/", "\\");
                 return path.Replace("/", "\\");
             }
 
             string trimmed = path.Substring(idx);     // "/Instances/...."
-            return "X:" + trimmed.Replace("/", "\\"); // "X:\Instances\...."
+            return "X:" + trimmed.Replace("/", "\\"); // "X:\\Instances\\...."
         }
-
 
         public static string ToWineIniPath(string path)
         {
@@ -2774,6 +2784,14 @@ ccafdsse001-dwesanctuary.esm";
                 return text;
 
             return text.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
+        }
+
+        private static string TrimTrailingBackslash(string s)
+        {
+            if (s.EndsWith("\"", StringComparison.Ordinal))
+                return s[..^1].TrimEnd('\\') + "\"";
+
+            return s.TrimEnd('\\');
         }
 
         #endregion                       
