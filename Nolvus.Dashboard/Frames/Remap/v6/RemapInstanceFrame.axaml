@@ -1,0 +1,207 @@
+<UserControl
+    x:Class="Nolvus.Dashboard.Frames.Remap.v6.RemapInstanceFrame"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Border Background="#2E2E2E" Padding="12">
+
+        <Grid RowDefinitions="Auto,*" RowSpacing="12">
+
+            <!-- LblStepText -->
+            <TextBlock x:Name="LblStepText"
+                       Grid.Row="0"
+                       Text="Remap Instance Paths"
+                       FontSize="20"
+                       Foreground="White"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"/>
+
+            <!-- panel3 -->
+            <Border x:Name="panel3"
+                    Grid.Row="1"
+                    Background="#363636"
+                    BorderBrush="#444"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="12">
+
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,*"
+                      RowSpacing="12">
+
+                    <!-- label3 -->
+                    <TextBlock x:Name="label3"
+                               Grid.Row="0"
+                               Foreground="White"
+                               TextWrapping="Wrap"
+                               Text="This feature allows you to move your instance into another drive or directory. Useful if you want to move your instance elsewhere, but does not directly shorten drive paths because Wine/Proton handle this."/>
+
+                    <!-- label4 -->
+                    <TextBlock x:Name="label4"
+                               Grid.Row="1"
+                               Foreground="White"
+                               TextWrapping="Wrap"
+                               Text="Select a new directory to move your instance (must be empty) and click on the Remap button."/>
+
+                    <!-- groupBox1 (Border-based, but keeps the original component name) -->
+                    <Border x:Name="groupBox1"
+                            Grid.Row="2"
+                            Background="Transparent"
+                            BorderBrush="#444"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="12">
+
+                        <Grid RowDefinitions="Auto,*"
+                              RowSpacing="10">
+
+                            <!-- Group header text (WinForms GroupBox.Text = "Instance Info") -->
+                            <TextBlock Text="Instance Info"
+                                       Foreground="White"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,4"/>
+
+                            <!-- Body -->
+                            <Grid Grid.Row="1"
+                                  RowDefinitions="Auto,Auto,Auto,Auto"
+                                  ColumnDefinitions="Auto,* ,Auto"
+                                  ColumnSpacing="12"
+                                  RowSpacing="10">
+
+                                <!-- LblInstance (top strip inside group) -->
+                                <Border Grid.Row="0"
+                                        Grid.Column="0"
+                                        Grid.ColumnSpan="3"
+                                        Background="#2E2E2E"
+                                        BorderBrush="#444"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="8,6">
+                                    <TextBlock x:Name="LblInstance"
+                                               Text="Instance Paths"
+                                               Foreground="White"
+                                               FontSize="16"
+                                               VerticalAlignment="Center"/>
+                                </Border>
+
+                                <!-- label1 + LblCurrentInstallPath -->
+                                <TextBlock x:Name="label1"
+                                           Grid.Row="1"
+                                           Grid.Column="0"
+                                           Text="Current Installation Path"
+                                           Foreground="White"
+                                           VerticalAlignment="Center"/>
+
+                                <TextBlock x:Name="LblCurrentInstallPath"
+                                           Grid.Row="1"
+                                           Grid.Column="1"
+                                           Grid.ColumnSpan="2"
+                                           Text="[Path]"
+                                           Foreground="#F28F1A"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap"/>
+
+                                <!-- label2 -->
+                                <TextBlock x:Name="label2"
+                                           Grid.Row="2"
+                                           Grid.Column="0"
+                                           Grid.ColumnSpan="3"
+                                           Text="New installation path (select an empty directory)"
+                                           Foreground="White"
+                                           VerticalAlignment="Center"/>
+
+                                <!-- TxtBxInstancePath + BtnBrowseInstancePath -->
+                                <TextBox x:Name="TxtBxInstancePath"
+                                         Grid.Row="3"
+                                         Grid.Column="0"
+                                         Grid.ColumnSpan="2"
+                                         IsReadOnly="True"
+                                         Background="#2E2E2E"
+                                         Foreground="White"
+                                         BorderBrush="#444"
+                                         BorderThickness="1"
+                                         CornerRadius="4"
+                                         Padding="8,6"/>
+
+                                <Button x:Name="BtnBrowseInstancePath"
+                                        Grid.Row="3"
+                                        Grid.Column="2"
+                                        Content="..."
+                                        Width="28"
+                                        Height="28"
+                                        Padding="0"
+                                        Background="#2E2E2E"
+                                        Foreground="White"
+                                        BorderBrush="White"
+                                        BorderThickness="1"
+                                        HorizontalContentAlignment="Center"
+                                        VerticalContentAlignment="Center"/>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- PnlMessage -->
+                    <Border x:Name="PnlMessage"
+                            Grid.Row="3"
+                            Background="#F28F1A"
+                            BorderBrush="#444"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="10">
+
+                        <Grid ColumnDefinitions="Auto,*"
+                              ColumnSpacing="10"
+                              VerticalAlignment="Center">
+
+                            <!-- PicBox -->
+                            <Image x:Name="PicBox"
+                                   Width="32"
+                                   Height="32"
+                                   VerticalAlignment="Center"/>
+
+                            <!-- LblMessage -->
+                            <TextBlock x:Name="LblMessage"
+                                       Grid.Column="1"
+                                       Foreground="White"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       Text="DO NOT CLOSE YOUR DASHBOARD DURING THIS OPERATION, YOU WILL BREAK YOUR INSTANCE!!!"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Bottom buttons (BtnCancel / BtnRemap) -->
+                    <StackPanel Grid.Row="4"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom"
+                                Spacing="12">
+
+                        <Button x:Name="BtnCancel"
+                                Content="Back"
+                                MinWidth="90"
+                                Padding="10,6"
+                                Background="#2E2E2E"
+                                Foreground="White"
+                                BorderBrush="White"
+                                BorderThickness="1"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"/>
+
+                        <Button x:Name="BtnRemap"
+                                Content="Remap"
+                                MinWidth="90"
+                                Padding="10,6"
+                                Background="#2E2E2E"
+                                Foreground="#F28F1A"
+                                BorderBrush="#F28F1A"
+                                BorderThickness="1"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"/>
+                    </StackPanel>
+
+                </Grid>
+            </Border>
+
+        </Grid>
+    </Border>
+</UserControl>

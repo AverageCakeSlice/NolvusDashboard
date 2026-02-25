@@ -14,6 +14,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Formats.Png;
 using System.Text.RegularExpressions;
+using Avalonia.Input;
 
 namespace Nolvus.Package.Mods
 {
@@ -2461,6 +2462,35 @@ ccafdsse001-dwesanctuary.esm";
             AppendToIni(IniDir, "customExecutables", Size + "\\workingDirectory", WineWorkingDir);
         }
 
+        //TODO testing required
+        public static void ModifyExecutable(string ExecutableName, string IniDir, string Binary, string Args, string WorkingDirectory)
+        {
+            var Parser = ServiceSingleton.Settings.GetIniParser();
+
+            var IniData = Parser.ReadFile(Path.Combine(IniDir, "MO2", "ModOrganizer.ini"));
+
+            var Section = IniData.Sections.Where(x => x.SectionName == "customExecutables").FirstOrDefault();
+
+            var KeyIndex = Section.Keys.Where(x => x.KeyName.Contains("title") && x.Value.Contains(ExecutableName)).FirstOrDefault().KeyName.Substring(0, 1);
+
+            IniData["customExecutables"][KeyIndex + "\\" + "binary"] = Binary;
+            IniData["customExecutables"][KeyIndex + "\\" + "arguments"] = Args;
+            IniData["customExecutables"][KeyIndex + "\\" + "workingDirectory"] = WorkingDirectory;
+
+            Parser.WriteFile(Path.Combine(IniDir, "MO2", "ModOrganizer.ini"), IniData);
+        }
+
+        public static bool CheckIfExecutableExists(string ExecutableName, string IniDir)
+        {
+            var Parser = ServiceSingleton.Settings.GetIniParser();
+
+            var IniData = Parser.ReadFile(Path.Combine(IniDir, "MO2", "ModOrganizer.ini"));
+
+            var Section = IniData.Sections.Where(x => x.SectionName == "customExecutables").FirstOrDefault();
+
+            return Section.Keys.Where(x => x.KeyName.Contains("title") && x.Value.Contains(ExecutableName)).FirstOrDefault() != null;
+        }
+
         private void CreateBaseDirectories()
         {
             INolvusInstance Instance = ServiceSingleton.Instances.WorkingInstance;
@@ -2552,10 +2582,10 @@ ccafdsse001-dwesanctuary.esm";
             File.CreateSymbolicLink(linkName, linkLoc);
 
             // xEdit
-            string dataPath = "-D:" + "\"" + ToWinePath(Path.Combine(Instance.InstallDir, "STOCK GAME", "Data") + "\\\"");
-            string iniPath = "-I:" + "\"" + ToWinePath(Path.Combine(Instance.InstallDir, "MODS", "profiles", Instance.Name, "Skyrim.ini")) + "\\\"";
-            string pluginPath = "-P:" + "\"" + ToWinePath(Path.Combine(Instance.InstallDir, "MODS", "profiles", Instance.Name, "plugins.txt") + "\\\"");
-            string Args = TrimTrailingBackslash(dataPath) + " " + TrimTrailingBackslash(iniPath) + " " + TrimTrailingBackslash(pluginPath);
+            string dataPath = ToWinePath(Path.Combine(Instance.InstallDir, "STOCK GAME", "Data"));
+            string iniPath = ToWinePath(Path.Combine(Instance.InstallDir, "MODS", "profiles", Instance.Name, "Skyrim.ini"));
+            string pluginPath = ToWinePath(Path.Combine(Instance.InstallDir, "MODS", "profiles", Instance.Name, "plugins.txt"));
+            string Args = "-D:" + MO2String(dataPath) + " " + "-I:" + MO2String(iniPath) + " " + "-P:" + MO2String(pluginPath);
             AddExecutable(Path.Combine(Instance.InstallDir, "MO2"), Args,
                 Path.Combine(Instance.InstallDir, "TOOLS", "SSE Edit", "SSEEdit.exe").Replace(@"\", @"/"),
                 false, true, "xEdit", true,
@@ -2603,7 +2633,7 @@ ccafdsse001-dwesanctuary.esm";
 
                     CreateBaseDirectories();
                     CreateProfileBaseFiles();
-                    CreateLauncher();
+                    //CreateLauncher();
                     AddExecutables();
 
                     var extractDir = Path.Combine(ServiceSingleton.Folders.ExtractDirectory, ExtractSubDir);
@@ -2728,6 +2758,17 @@ ccafdsse001-dwesanctuary.esm";
             }).ToList();                                        
         }
 
+        public async Task<List<string>> GetProfilesAsync()
+        {
+            return await Task.Run(() =>
+            {
+                return new DirectoryInfo(Path.Combine(ServiceSingleton.Instances.WorkingInstance.InstallDir, "MODS", "profiles")).GetDirectories().Where(x => x.GetFiles().Any(y => y.Name == "modlist.txt")).Select(d =>
+                {
+                    return d.Name;
+                }).ToList();
+            });
+        }
+
         public async Task<List<ModObject>> GetModsMetaData(Action<string, int> Progress = null)
         {
             return await DoGetModsMetaData(ServiceSingleton.Instances.WorkingInstance.Name, Progress);
@@ -2786,12 +2827,11 @@ ccafdsse001-dwesanctuary.esm";
             return text.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
         }
 
-        private static string TrimTrailingBackslash(string s)
+        private static string MO2String(string path)
         {
-            if (s.EndsWith("\"", StringComparison.Ordinal))
-                return s[..^1].TrimEnd('\\') + "\"";
-
-            return s.TrimEnd('\\');
+            path = path.TrimEnd('\\');
+            var escaped = path.Replace("\\", "\\\\");
+            return "\\\"" + escaped + "\\\"";
         }
 
         #endregion                       
