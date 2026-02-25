@@ -6,33 +6,19 @@
     xmlns:frames="clr-namespace:Nolvus.Core.Frames;assembly=Nolvus.Core"
     Background="#363636">
 
-    <Grid RowDefinitions="Auto,*"
-          Margin="16">
+    <Border Margin="16"
+            Background="#2E2E2E"
+            BorderBrush="#505050"
+            BorderThickness="1"
+            CornerRadius="6"
+            Padding="8">
 
-        <!-- Title -->
-        <TextBlock Text="Installing Mods"
-                   FontSize="20"
-                   Foreground="White"
-                   Margin="0,0,0,12" />
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
 
-        <!-- Main content -->
-        <Border Grid.Row="1"
-                Background="#2E2E2E"
-                BorderBrush="#505050"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="8">
+            <controls:ModsBox x:Name="ModsBox"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Top"/>
 
-            <!-- ScrollViewer included to support large mod lists -->
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-
-                <!-- Your existing ModsBox control -->
-                <controls:ModsBox x:Name="ModsBox"
-                                  HorizontalAlignment="Stretch"
-                                  VerticalAlignment="Top"/>
-
-            </ScrollViewer>
-        </Border>
-
-    </Grid>
+        </ScrollViewer>
+    </Border>
 </UserControl>

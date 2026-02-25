@@ -321,8 +321,8 @@ public partial class DashboardWindow : Window, IDashboard
             return;
         }
 
-        StStripLblAdditionalInfo.IsVisible = true;
-        StStripLblAdditionalInfo.Text = Value;
+        StStripLblInfo.IsVisible = true;
+        StStripLblInfo.Text = Value;
     }
 
     public void AdditionalInfo(string Value)

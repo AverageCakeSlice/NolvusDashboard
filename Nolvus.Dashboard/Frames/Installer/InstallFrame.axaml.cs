@@ -68,6 +68,14 @@ namespace Nolvus.Dashboard.Frames.Installer
                     {
                         OnStartInstalling = () =>
                         {
+                            ServiceSingleton.Dashboard.Status(string.Format(
+                                    "{0} {1} - {2} (v{3})",
+                                    Instance.Status.InstallStatus == InstanceInstallStatus.Installing ? "Installing" : "Updating",
+                                    Instance.Name,
+                                    Instance.Performance.Variant,
+                                    ServiceSingleton.Packages.LoadedVersion));
+                            ServiceSingleton.Dashboard.ProgressCompleted();
+                            
                             Refresh(ServiceSingleton.Settings.RefreshInterval);
                         },
                         OnModInstalled = (Mod) =>
