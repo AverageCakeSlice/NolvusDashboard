@@ -163,7 +163,7 @@ namespace Nolvus.Dashboard.Frames.Instance.v6
 
                 if (Instance.Settings.EnableArchiving)
                 {
-                    TglBtnDownScale.IsChecked = true;
+                    TglBtnEnableArchive.IsChecked = true;
                 }
 
                 TglBtnDownScale.IsChecked = false;
@@ -221,7 +221,7 @@ namespace Nolvus.Dashboard.Frames.Instance.v6
 
                 GrpBxDownscaling.IsEnabled = Instance.Performance.AntiAliasing != "DLAA" && Instance.Performance.AntiAliasing != "FSR";
 
-                Initializing = false;   
+                Initializing = false;
 
             }
             catch (Exception ex)
