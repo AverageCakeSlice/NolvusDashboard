@@ -412,14 +412,14 @@ namespace Nolvus.Dashboard.Controls
 
             if (skyrimPath == null)
             {
-                ServiceSingleton.Logger.Log("Skyrim Path not found - manual intervention required");
+                await NolvusMessageBox.Show(window, "Error", "Skyrim installation path not found, manual configuration of the redirector is required!", MessageBoxType.Error);
                 return;
             }
 
             string? launcherPath = Path.Combine(skyrimPath, "SkyrimSELauncher.exe");
             if (!File.Exists(launcherPath))
             {
-                NolvusMessageBox.Show(window, "Error", "SkyrimSE.exe not found. If you believe this is a bug, install the launcher manually.", MessageBoxType.Error);
+                await NolvusMessageBox.Show(window, "Error", "SkyrimSE.exe not found. If you believe this is a bug, install the launcher manually.", MessageBoxType.Error);
                 return;
             }
 
@@ -427,7 +427,7 @@ namespace Nolvus.Dashboard.Controls
             string? md5 = GetFileMd5(launcherPath);
             if(md5 != null && md5.ToLowerInvariant() == NolvusHash)
             {
-                NolvusMessageBox.Show(window, "Error", "Redirector already exists - Update your instancepath.txt manually", MessageBoxType.Error);
+                await NolvusMessageBox.Show(window, "Error", "Redirector already exists - Update your instancepath.txt manually", MessageBoxType.Error);
                 return;
             }
 
