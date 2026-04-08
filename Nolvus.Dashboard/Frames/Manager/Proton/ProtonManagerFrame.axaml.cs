@@ -119,7 +119,7 @@ namespace Nolvus.Dashboard.Frames.Manager.Proton
         private async void BtnInstall_Click(object? sender, RoutedEventArgs e)
         {
             const string appId = "489830";
-            
+            var top = TopLevel.GetTopLevel(this) as Window;
             //Unable to detect Protons
             if (ProtonPathBox.IsEnabled)
             {
@@ -148,14 +148,13 @@ namespace Nolvus.Dashboard.Frames.Manager.Proton
                 await Protontricks.ConfigureAsync(appId, instanceInstallDir: Instance.InstallDir, protonVersion: null, protonPath: ProtonPath);
                 ServiceSingleton.Dashboard.ProgressCompleted();
                 ServiceSingleton.Dashboard.NoStatus();
-                
-                var top = TopLevel.GetTopLevel(this) as Window;
+
                 if (top != null)
                 {
                     await NolvusMessageBox.Show(top, "Proton Configuration", "Proton has been successfully configured.", MessageBoxType.Info);
                 }
 
-                return;
+                await ServiceSingleton.Dashboard.LoadFrameAsync<InstancesFrame>();
             }
             
             var Runner = DrpDwnLstProtonRunner.SelectedItem as string;
@@ -167,6 +166,17 @@ namespace Nolvus.Dashboard.Frames.Manager.Proton
             }
 
             await Protontricks.ConfigureAsync(appId, instanceInstallDir: Instance.InstallDir, protonVersion: Runner, protonPath: null);
+
+            ServiceSingleton.Dashboard.ProgressCompleted();
+            ServiceSingleton.Dashboard.NoStatus();
+
+            if (top != null)
+            {
+                await NolvusMessageBox.Show(top, "Proton Configuration", "Proton has been successfully configured.", MessageBoxType.Info);
+            }
+
+            await ServiceSingleton.Dashboard.LoadFrameAsync<InstancesFrame>();
+            
         }
 
         private async void PrefixPath_Click(object? sender, RoutedEventArgs e)
