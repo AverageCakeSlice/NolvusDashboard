@@ -248,10 +248,22 @@ namespace Nolvus.Browser
             var tcs = new TaskCompletionSource<string>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
 
+            var mainLoadTcs = new TaskCompletionSource<object?>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+
             void Requested(object? s, FileDownloadRequestEvent e)
             {
                 if (!string.IsNullOrWhiteSpace(e.DownloadUrl))
                     tcs.TrySetResult(e.DownloadUrl);
+            }
+
+            void LoadEnd(object? s, LoadEndEventArgs e)
+            {
+                if (!e.Frame.IsMain)
+                    return;
+
+                _cef.LoadEnd -= LoadEnd;
+                mainLoadTcs.TrySetResult(null);
             }
 
             handler.OnFileDownloadRequest += Requested;
@@ -259,23 +271,37 @@ namespace Nolvus.Browser
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 _cef.DownloadHandler = handler;
+                _cef.LoadEnd += LoadEnd;
                 NavigateInternal(link);
             });
 
-            string result;
             try
             {
-                result = await tcs.Task.ConfigureAwait(false);
+                if (ServiceSingleton.Settings.NexusAutoClick)
+                {
+                    await mainLoadTcs.Task.ConfigureAwait(false);
+
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        _cef.ExecuteJavaScript(ScriptManager.GetClickNexusSlowDownload());
+                    });
+                }
+
+                string result = await tcs.Task.ConfigureAwait(false);
+                return result;
             }
             finally
             {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    try { _cef.LoadEnd -= LoadEnd; } catch { }
+                });
+
                 handler.OnFileDownloadRequest -= Requested;
 
                 await Dispatcher.UIThread.InvokeAsync(CloseBrowser);
                 await WaitForClosedAsync().ConfigureAwait(false);
             }
-
-            return result;
         }
 
         private void DisposeCefIfNeeded()
