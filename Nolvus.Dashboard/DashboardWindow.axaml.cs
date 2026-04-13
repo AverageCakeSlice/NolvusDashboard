@@ -22,6 +22,7 @@ namespace Nolvus.Dashboard;
 public partial class DashboardWindow : Window, IDashboard
 {
     private DashboardFrame LoadedFrame;
+    internal Type? SettingsReturnFrameType;
 
     #region Events
 
@@ -554,12 +555,13 @@ public partial class DashboardWindow : Window, IDashboard
     }
 
     private void TitleBarControl_OnSettingsClicked(object? sender, EventArgs e)
-    {   
+    {
         var owner = TopLevel.GetTopLevel(this) as Window;
-        if (!ServiceSingleton.Packages.Processing) 
+        if (!ServiceSingleton.Packages.Processing)
         {
-            if (TitleBarControl.SettingsEnabled) 
+            if (TitleBarControl.SettingsEnabled)
             {
+                SettingsReturnFrameType = LoadedFrame?.GetType();
                 ServiceSingleton.Dashboard.LoadFrame<GlobalSettingsFrame>();
             }
             else
