@@ -11,7 +11,6 @@ using Nolvus.Core.Utils;
 using Nolvus.Core.Enums;
 using Nolvus.StockGame.Core;
 using Nolvus.StockGame.Meta;
-using Nolvus.Core.Utils;
 
 namespace Nolvus.StockGame.Patcher
 {
@@ -202,18 +201,32 @@ namespace Nolvus.StockGame.Patcher
 
                 process.Start();
 
-                string stdout = await process.StandardOutput.ReadToEndAsync();
-                string stderr = await process.StandardError.ReadToEndAsync();
+                // 1. Drain both pipes concurrently before waiting — prevents buffer deadlock.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
 
-                await process.WaitForExitAsync();
+                // 2. Reap via waitpid() on a dedicated thread — WaitForExitAsync hangs on this system.
+                var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+                int pid = process.Id;
+                new Thread(() =>
+                {
+                    try { tcs.TrySetResult(PosixWait.WaitForExitBlocking(pid)); }
+                    catch (Exception ex) { tcs.TrySetException(ex); }
+                }) { IsBackground = true, Name = $"xdelta3-dopatch-wait-{pid}" }.Start();
 
-                ServiceSingleton.Logger.Log($"Exit code: {process.ExitCode}");
+                int exitCode = await tcs.Task;
+
+                // 3. Collect remaining output after process has exited.
+                string stdout = await stdoutTask;
+                string stderr = await stderrTask;
+
+                ServiceSingleton.Logger.Log($"Exit code: {exitCode}");
                 if (!string.IsNullOrWhiteSpace(stdout))
                     ServiceSingleton.Logger.Log($"stdout: {stdout}");
                 if (!string.IsNullOrWhiteSpace(stderr))
                     ServiceSingleton.Logger.Log($"stderr: {stderr}");
 
-                if (process.ExitCode != 0)
+                if (exitCode != 0)
                 {
                     throw new GameFilePatchingException(
                         $"Failed to patch game file : {Instruction.DestFile.Name}",
@@ -254,52 +267,78 @@ namespace Nolvus.StockGame.Patcher
 
         public async Task PatchFile(string sourceFile, string destinationFile, string patchFile)
         {
-            var task = Task.Run(() =>
+            try
             {
+                var workingDirectory = new FileInfo(destinationFile).DirectoryName ?? ".";
+                var xdeltaPath = Path.Combine(ServiceSingleton.Folders.LibDirectory, "xdelta3");
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = xdeltaPath,
+                    WorkingDirectory = workingDirectory,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                psi.ArgumentList.Add("-d");
+                psi.ArgumentList.Add("-f");
+                psi.ArgumentList.Add("-s");
+                psi.ArgumentList.Add(sourceFile);
+                psi.ArgumentList.Add(patchFile);
+                psi.ArgumentList.Add(destinationFile);
+
+                using var proc = new Process { StartInfo = psi };
+                proc.Start();
+
+                // 1. Drain both pipes concurrently before waiting — prevents buffer deadlock.
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+                var stderrTask = proc.StandardError.ReadToEndAsync();
+
+                ServiceSingleton.Logger.Log("Patching await start");
+
+                // 2. Reap via waitpid() on a dedicated thread — WaitForExitAsync hangs on this system.
+                var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+                int pid = proc.Id;
+                new Thread(() =>
+                {
+                    try { tcs.TrySetResult(PosixWait.WaitForExitBlocking(pid)); }
+                    catch (Exception ex) { tcs.TrySetException(ex); }
+                }) { IsBackground = true, Name = $"xdelta3-wait-{pid}" }.Start();
+
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromMinutes(5));
+                cts.Token.Register(() => tcs.TrySetCanceled());
+
+                int exitCode;
                 try
                 {
-                    var workingDirectory = new FileInfo(destinationFile).DirectoryName ?? ".";
-                    
-                    var xdeltaPath = Path.Combine(ServiceSingleton.Folders.LibDirectory, "xdelta3");
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = xdeltaPath,
-                        Arguments = $"-d -f -s \"{sourceFile}\" \"{patchFile}\" \"{destinationFile}\"",
-                        WorkingDirectory = workingDirectory,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-
-                    using var proc = new Process { StartInfo = psi };
-
-                    List<string> output = new();
-                    proc.OutputDataReceived += (_, e) => { if (e.Data != null) output.Add(e.Data); };
-                    proc.ErrorDataReceived += (_, e) => { if (e.Data != null) output.Add(e.Data); };
-
-                    proc.Start();
-                    proc.BeginOutputReadLine();
-                    proc.BeginErrorReadLine();
-                    proc.WaitForExit();
-
-                    if (proc.ExitCode != 0)
-                    {
-                        throw new Exception(
-                            $"xdelta3 failed (exit {proc.ExitCode})\n{string.Join(Environment.NewLine, output)}");
-                    }
-
-                    ServiceSingleton.Logger.Log(
-                        $"Patched {Path.GetFileName(destinationFile)} successfully (exit {proc.ExitCode})");
+                    exitCode = await tcs.Task;
                 }
-                catch (Exception ex)
+                catch (TaskCanceledException)
                 {
-                    ServiceSingleton.Logger.Log($"PatchFile error: {ex.Message}");
-                    throw;
+                    // Kill() is wrapped in try/catch — the process may have exited between the
+                    // timeout firing and Kill() being called (race condition).
+                    try { proc.Kill(entireProcessTree: true); } catch { }
+                    throw new Exception($"xdelta3 timed out after 5 minutes patching {Path.GetFileName(destinationFile)}");
                 }
-            });
 
-            await task;
+                ServiceSingleton.Logger.Log("Patching await end");
+
+                // 3. Collect remaining output after process has exited.
+                string stderr = await stderrTask;
+                await stdoutTask;
+
+                if (exitCode != 0)
+                    throw new Exception($"xdelta3 failed (exit {exitCode})\n{stderr}");
+
+                ServiceSingleton.Logger.Log($"Patched {Path.GetFileName(destinationFile)} successfully (exit {exitCode})");
+            }
+            catch (Exception ex)
+            {
+                ServiceSingleton.Logger.Log($"PatchFile error: {ex.Message}");
+                throw;
+            }
         }
 
         private void DeleteFile(PatchingInstruction Instruction, string DestDir)

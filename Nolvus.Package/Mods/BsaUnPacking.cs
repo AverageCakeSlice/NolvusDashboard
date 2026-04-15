@@ -2,10 +2,9 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Nolvus.Core.Services;
-using Nolvus.Core.Interfaces;
-using Nolvus.Package.Services;
 using System.Diagnostics;
+using Nolvus.Core.Services;
+using Nolvus.Core.Utils;
 
 namespace Nolvus.Package.Mods
 {
@@ -38,72 +37,61 @@ namespace Nolvus.Package.Mods
 
         public async Task UnPack(string extractDir)
         {
-            var Tsk = Task.Run(() =>
+            var bsaFile = GetBsaToUnpack(extractDir);
+            var bsArchPath = Path.Combine(ServiceSingleton.Folders.LibDirectory, "BSArch");
+
+            if (!File.Exists(bsArchPath))
+                throw new FileNotFoundException($"BSArch not found: {bsArchPath}", bsArchPath);
+
+            if (bsaFile == null)
+                throw new Exception("Failed to unpack file : " + FileName + "==> File not found");
+
+            var psi = new ProcessStartInfo
             {
-                var bsaFile = GetBsaToUnpack(extractDir);
-                var BSArch = Path.Combine(ServiceSingleton.Folders.LibDirectory, "BSArch");
+                FileName = bsArchPath,
+                WorkingDirectory = ServiceSingleton.Folders.LibDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
 
-                if (!File.Exists(BSArch))
-                    throw new FileNotFoundException($"BSArch not found: {BSArch}", BSArch);
+            psi.ArgumentList.Add("unpack");
+            psi.ArgumentList.Add(bsaFile.FullName);
+            psi.ArgumentList.Add(bsaFile.DirectoryName);
 
-                if (bsaFile != null)
-                {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = BSArch,
-                        WorkingDirectory = ServiceSingleton.Folders.LibDirectory,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    };
+            ServiceSingleton.Logger.Log($"Unpacking command line : \"{bsArchPath}\" unpack \"{bsaFile.FullName}\" \"{bsaFile.DirectoryName}\"");
 
-                    psi.ArgumentList.Add("unpack");
-                    psi.ArgumentList.Add(bsaFile.FullName);
-                    psi.ArgumentList.Add(bsaFile.DirectoryName);
+            using var unpack = new Process { StartInfo = psi };
+            unpack.Start();
 
-                    ServiceSingleton.Logger.Log($"Unpacking command line : \"{BSArch}\" unpack \"{bsaFile.FullName}\" \"{bsaFile.DirectoryName}\"");
+            // 1. Drain both pipes concurrently before waiting for exit.
+            //    Sequential reads deadlock if the process fills one pipe while we block on the other.
+            var stdoutTask = unpack.StandardOutput.ReadToEndAsync();
+            var stderrTask = unpack.StandardError.ReadToEndAsync();
 
-                    var unpack = new Process { StartInfo = psi };
-                    List<string> output = new();
+            // 2. Wait for process exit via direct waitpid() — WaitForExitAsync hangs on this system.
+            var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int pid = unpack.Id;
+            new Thread(() =>
+            {
+                try { tcs.TrySetResult(PosixWait.WaitForExitBlocking(pid)); }
+                catch (Exception ex) { tcs.TrySetException(ex); }
+            }) { IsBackground = true, Name = $"bsarch-wait-{pid}" }.Start();
 
-                    unpack.OutputDataReceived += (_, e) =>
-                    {
-                        if (!string.IsNullOrWhiteSpace(e.Data))
-                        {
-                            output.Add(e.Data);
-                        }
-                    };
+            int exitCode = await tcs.Task;
 
-                    unpack.ErrorDataReceived += (_, e) =>
-                    {
-                        if (!string.IsNullOrWhiteSpace(e.Data))
-                        {
-                            output.Add(e.Data);
-                        }
-                    };
+            // 3. Collect any remaining buffered output after the process has exited.
+            string output = await stdoutTask + await stderrTask;
 
-                    unpack.Start();
-                    unpack.BeginOutputReadLine();
-                    unpack.BeginErrorReadLine();
-                    unpack.WaitForExit();
-
-                    if (unpack.ExitCode == 0)
-                    {
-                        File.Delete(bsaFile.FullName);
-                    }
-                    else
-                    {
-                        throw new Exception("Failed to unpack file : " + FileName + "==>" + string.Join(Environment.NewLine, output.ToArray()));
-                    }
-                }
-                else
-                {
-                    throw new Exception("Failed to unpack file : " + FileName + "==> File not found");
-                }
-            });
-
-            await Tsk;
+            if (exitCode == 0)
+            {
+                File.Delete(bsaFile.FullName);
+            }
+            else
+            {
+                throw new Exception("Failed to unpack file : " + FileName + "==>" + output);
+            }
         }
     }
 }

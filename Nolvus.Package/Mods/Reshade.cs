@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 using Nolvus.Core.Services;
 using Nolvus.Core.Interfaces;
+using Nolvus.Core.Utils;
 
 
 namespace Nolvus.Package.Mods
@@ -140,65 +141,65 @@ WindowRounding=0.000000";
         
         protected override async Task DoExtract()
         {
-            await Task.Run(() =>
+            try
             {
-                try
+                ServiceSingleton.Logger.Log("Extracting reshade binaries");
+
+                ServiceSingleton.Files.RemoveDirectory(
+                    Path.Combine(ServiceSingleton.Folders.ExtractDirectory, Name),
+                    true);
+
+                string sevenZip = Path.Combine(ServiceSingleton.Folders.LibDirectory, "7z");
+                string zipFile = this.Files.First().LocationFileName;
+                string outDir = Path.Combine(ServiceSingleton.Folders.ExtractDirectory, Name);
+
+                var psi = new ProcessStartInfo
                 {
-                    ServiceSingleton.Logger.Log("Extracting reshade binaries");
+                    FileName = sevenZip,
+                    WorkingDirectory = ServiceSingleton.Folders.DownloadDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
 
-                    ServiceSingleton.Files.RemoveDirectory(
-                        Path.Combine(ServiceSingleton.Folders.ExtractDirectory, Name),
-                        true);
+                psi.ArgumentList.Add("x");
+                psi.ArgumentList.Add("-bsp1");
+                psi.ArgumentList.Add("-y");
+                psi.ArgumentList.Add(zipFile);
+                psi.ArgumentList.Add($"-o{outDir}");
+                psi.ArgumentList.Add("-mmt=off");
 
-                    string sevenZip = Path.Combine(ServiceSingleton.Folders.LibDirectory, "7z");
+                using var proc = new Process { StartInfo = psi };
+                proc.Start();
 
-                    string zipFile = this.Files.First().LocationFileName;
-                    string outDir = Path.Combine(ServiceSingleton.Folders.ExtractDirectory, Name);
+                // 1. Drain both pipes concurrently before waiting — prevents buffer deadlock.
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+                var stderrTask = proc.StandardError.ReadToEndAsync();
 
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = sevenZip,
-                        Arguments = $"x -bsp1 -y \"{zipFile}\" -o\"{outDir}\" -mmt=off",
-                        WorkingDirectory = ServiceSingleton.Folders.DownloadDirectory,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    };
-
-                    var proc = new Process { StartInfo = psi };
-                    var output = new List<string>();
-
-                    proc.OutputDataReceived += (s, e) =>
-                    {
-                        if (!string.IsNullOrEmpty(e.Data))
-                            output.Add(e.Data);
-                    };
-
-                    proc.ErrorDataReceived += (s, e) =>
-                    {
-                        if (!string.IsNullOrEmpty(e.Data))
-                            output.Add(e.Data);
-                    };
-
-                    proc.Start();
-                    proc.BeginOutputReadLine();
-                    proc.BeginErrorReadLine();
-                    proc.WaitForExit();
-
-                    if (proc.ExitCode != 0)
-                    {
-                        throw new Exception("Error during reshade extraction:\n" +
-                                            string.Join("\n", output));
-                    }
-                }
-                catch (Exception ex)
+                // 2. Reap via waitpid() on a dedicated thread — WaitForExitAsync hangs on this system.
+                var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+                int pid = proc.Id;
+                new Thread(() =>
                 {
-                    ServiceSingleton.Logger.Log(
-                        $"Error during reshade binaries extraction: {ex.Message}");
-                    throw;
-                }
-            });
+                    try { tcs.TrySetResult(PosixWait.WaitForExitBlocking(pid)); }
+                    catch (Exception ex) { tcs.TrySetException(ex); }
+                }) { IsBackground = true, Name = $"7z-reshade-wait-{pid}" }.Start();
+
+                int exitCode = await tcs.Task;
+
+                // 3. Collect remaining output after process has exited.
+                string output = await stderrTask;
+                await stdoutTask;
+
+                if (exitCode != 0)
+                    throw new Exception("Error during reshade extraction:\n" + output);
+            }
+            catch (Exception ex)
+            {
+                ServiceSingleton.Logger.Log($"Error during reshade binaries extraction: {ex.Message}");
+                throw;
+            }
         }
 
         protected override async Task PrepareDirectory()
