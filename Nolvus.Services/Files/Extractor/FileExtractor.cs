@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Nolvus.Core.Events;
 using Nolvus.Core.Services;
+using Nolvus.Core.Utils;
 
 namespace Nolvus.Services.Files.Extractor
 {
@@ -31,124 +31,84 @@ namespace Nolvus.Services.Files.Extractor
             ServiceSingleton.Logger.Log("File to extract: " + File);
             ServiceSingleton.Logger.Log("Outpath path: " + Output);
 
-            await Task.Run(() =>
+            FileName = Path.GetFileName(File);
+
+            try
             {
-                FileName = Path.GetFileName(File);
+                if (OnProgress != null)
+                    ExtractProgressChanged += OnProgress;
 
-                try
+                if (!Directory.Exists(Output))
+                    Directory.CreateDirectory(Output);
+
+                var sevenZipPath = Path.Combine(ServiceSingleton.Folders.LibDirectory, "7z");
+
+                var psi = new ProcessStartInfo
                 {
-                    if (OnProgress != null)
-                        ExtractProgressChanged += OnProgress;
+                    FileName = sevenZipPath,
+                    Arguments = $"x -bsp1 -y \"{File}\" -o\"{Output}\" -mmt=off",
+                    WorkingDirectory = ServiceSingleton.Folders.LibDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
 
-                    if (!Directory.Exists(Output))
-                        Directory.CreateDirectory(Output);
+                using var proc = new Process { StartInfo = psi };
+                proc.Start();
 
-                    var sevenZipPath = Path.Combine(ServiceSingleton.Folders.LibDirectory, "7z");
-
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = sevenZipPath,
-                        Arguments = $"x -bsp1 -y \"{File}\" -o\"{Output}\" -mmt=off",
-                        WorkingDirectory = ServiceSingleton.Folders.LibDirectory,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    };
-
-                    var proc = new Process { StartInfo = psi };
-                    List<string> errorOutput = new();
-
-                    proc.OutputDataReceived += (s, e) =>
-                    {
-                        if (e.Data != null && e.Data.Length >= 4 && e.Data[3] == '%')
-                        {
-                            if (int.TryParse(e.Data.Substring(0, 3), out var pct))
-                                TriggerProgressEvent(pct, FileName);
-                        }
-                    };
-
-                    proc.ErrorDataReceived += (s, e) =>
-                    {
-                        if (e.Data != null)
-                            errorOutput.Add(e.Data);
-                    };
-
-                    proc.Start();
-                    proc.BeginOutputReadLine();
-                    proc.BeginErrorReadLine();
-
-                    int exitCode = PosixWait.WaitForExitBlocking(proc.Id);
-                    
-                    try 
-                    {
-                        proc.Refresh();
-                    } 
-                    catch { }
-
-                    if (exitCode != 0)
-                        throw new Exception($"Error during File extraction {FileName} (exit code {exitCode}): {string.Join(" ", errorOutput)}");
-
-                    TriggerProgressEvent(100, FileName);
-                }
-                catch (Exception ex)
+                // 1. Start draining stdout line-by-line for progress reporting.
+                //    Must start BEFORE waiting so the pipe never fills and blocks 7z.
+                var progressTask = Task.Run(async () =>
                 {
-                    ServiceSingleton.Logger.Log(ex.Message);
-                    throw;
-                }
-                finally
-                {
-                    if (OnProgress != null)
+                    string line;
+                    while ((line = await proc.StandardOutput.ReadLineAsync()) != null)
                     {
-                        try 
-                        {
-                            ExtractProgressChanged -= OnProgress;
-                        } 
-                        catch { }
+                        if (line.Length >= 4 && line[3] == '%' && int.TryParse(line[..3], out var pct))
+                            TriggerProgressEvent(pct, FileName);
                     }
-                }
-            });
-        }
+                });
 
-        private static class PosixWait
-        {
-            [DllImport("libc", SetLastError = true)]
-            private static extern int waitpid(int pid, out int status, int options);
+                // 2. Start draining stderr concurrently for the same reason.
+                var stderrTask = proc.StandardError.ReadToEndAsync();
 
-            // Wait until the given PID is reaped. No timeout.
-            public static int WaitForExitBlocking(int pid)
-            {
-                while (true)
+                // 3. Wait for the process to exit on a dedicated OS thread.
+                //    WaitForExitAsync() hangs indefinitely on this system — PosixWait
+                //    calls waitpid() directly which is the only reliable mechanism here.
+                var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+                int pid = proc.Id;
+                new Thread(() =>
                 {
-                    int rc = waitpid(pid, out int status, 0);
+                    try { tcs.TrySetResult(PosixWait.WaitForExitBlocking(pid)); }
+                    catch (Exception ex) { tcs.TrySetException(ex); }
+                }) { IsBackground = true, Name = $"7z-wait-{pid}" }.Start();
 
-                    if (rc == pid)
-                        return DecodeExitCode(status);
+                int exitCode = await tcs.Task;
 
-                    if (rc == -1)
-                    {
-                        int err = Marshal.GetLastWin32Error();
+                // 4. Let the stream readers finish consuming any remaining buffered data.
+                string errorOutput = await stderrTask;
+                await progressTask;
 
-                        // If errno == ECHILD, someone else already reaped it.
-                        // Treat as success; extraction already finished.
-                        const int ECHILD = 10;
-                        if (err == ECHILD)
-                            return 0;
+                if (exitCode != 0)
+                    throw new Exception($"Error during File extraction {FileName} (exit code {exitCode}): {errorOutput}");
 
-                        throw new Exception($"waitpid({pid}) failed errno={err}");
-                    }
-                }
+                TriggerProgressEvent(100, FileName);
             }
-
-            private static int DecodeExitCode(int status)
+            catch (Exception ex)
             {
-                // Normal exit: low 7 bits are zero, exit code is high byte.
-                if ((status & 0x7F) == 0)
-                    return (status >> 8) & 0xFF;
-
-                // Signaled: return 128+signal (bash convention)
-                int sig = status & 0x7F;
-                return 128 + sig;
+                ServiceSingleton.Logger.Log(ex.Message);
+                throw;
+            }
+            finally
+            {
+                if (OnProgress != null)
+                {
+                    try
+                    {
+                        ExtractProgressChanged -= OnProgress;
+                    }
+                    catch { }
+                }
             }
         }
     }
