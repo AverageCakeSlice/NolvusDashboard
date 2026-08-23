@@ -440,7 +440,7 @@ namespace Nolvus.StockGame.Core
 
                     foreach (var Instruction in _Package.Instructions)
                     {
-                        await _Patcher.PatchFile(Instruction, _GameDir, _StockGameDir, _KeepPatches);
+                        await _Patcher.PatchFile(Instruction, _GameDir, _StockGameDir, _KeepPatches, _LanguageCode);
 
                         ElementProcessed(Counter, Total, StockGameProcessStep.GameFilesPatching, Instruction.DestFile.Name);
 

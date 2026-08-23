@@ -38,28 +38,5 @@ namespace Nolvus.StockGame.Meta
             DownLoadLink = Node["DownloadLink"].InnerText;            
         }
 
-        //private void DoDeleteFile(string Dir)
-        //{
-        //    File.Delete(Path.Combine(Dir, this.SourceFile.Name));
-        //}
-
-        //private void DoPatchFile(string GameDir, string StockGameDir)
-        //{
-
-        //}
-
-        //public void Execute(string GameDir, string StockGameDir)
-        //{
-        //    switch (Action)
-        //    {
-        //        case PatcherAction.Delete:
-        //            this.DoDeleteFile(StockGameDir);
-        //            break;
-        //        case PatcherAction.Patch:
-        //            this.DoPatchFile(GameDir, StockGameDir);
-        //            break;
-
-        //    }
-        //}
     }
 }
