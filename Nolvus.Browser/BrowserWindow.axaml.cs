@@ -209,7 +209,7 @@ namespace Nolvus.Browser
 
             try
             {
-                await mainLoadTcs.Task.ConfigureAwait(false);
+                await AwaitOrClosed(mainLoadTcs.Task).ConfigureAwait(false);
 
                 if (site == WebSite.EnbDev)
                 {
